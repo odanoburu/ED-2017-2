@@ -10,7 +10,7 @@
 ;; at 0). search functions are provided.
 
 ;; note: any node at any point of a trie is itself a trie (as a trie
-;; is characterized by a root node and its children.
+;; is characterized by a root node and its children).
 
 (defstruct (trie (:print-function
 		   (lambda (node stream k)
