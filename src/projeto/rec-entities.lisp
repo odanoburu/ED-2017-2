@@ -1,7 +1,6 @@
 ;; authors: bruno cuconato (@odanoburu)
 ;; placed in the public domain.
 
-
 ;; this code assumes a trie of entities built by
 ;; trie.lisp. (recognize-ents-in-sentences ) will take this trie and a
 ;; list of sentences (list of list of characters) and recognize the
