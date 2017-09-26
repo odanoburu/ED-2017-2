@@ -40,7 +40,7 @@
   (remove-separator (str-to-char (string-trim '(#\space #\tab) string))
                     separator))
 
-(defun process-entities (entities &key (separator #\space)
+(defun process-entities (entities &key (process-fn #'process-string)
                                     processed-entities
                                     (id 0))
   "return (ent-id . entity), where entity = list of characters minus
@@ -48,9 +48,10 @@ separator"
   (if (endp entities)
       processed-entities
       (process-entities
-       (rest entities) :separator separator :id (1+ id)
-       :processed-entities (acons id (process-string (first entities)
-                                                    separator)
+       (rest entities) :id (1+ id)
+       :process-fn process-fn
+       :processed-entities (acons id (funcall process-fn
+                                              (first entities))
                                   processed-entities))))
 
 ;;
@@ -83,8 +84,9 @@ separator"
 	(search-trie match (rest chars)
                      (cons match path) (1+ ix)))))
 
-(defun str-search-trie (trie string &optional (separator #\space))
-  (let ((chars (process-string string separator)))
+(defun str-search-trie (trie string &optional
+                                      (str-process-fn #'process-string))
+  (let ((chars (funcall str-process-fn string)))
     (search-trie trie chars)))
 
 (defun partially-in-trie? (trie chars)
@@ -97,8 +99,9 @@ separator"
     (when (and trie-node (trie-is-leaf? trie-node))
         trie-node)))
 
-(defun str-in-trie? (trie string &optional (separator #\space))
-  (let ((chars (process-string string separator)))
+(defun str-in-trie? (trie string &optional
+                                   (str-process-fn #'process-string))
+  (let ((chars (funcall str-process-fn string)))
     (leaf-in-trie? trie chars)))
 
 ;;
