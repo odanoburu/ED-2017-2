@@ -7,14 +7,21 @@
 
 Entregas:
 
+- Bruno Cuconato
 - João Marcos
 - Julio Vieira
 - Graziele dos Santos Cerqueira
+- Matheus de Oliveira
 
 * Lista 2
 
 - implementar função que dado índice do elemento desejado da lista
   encadeada, retorna esse elemento
+
+Entregas:
+
+- Bruno Cuconato
+- Matheus de Oliveira
 
 * Lista 3
 
@@ -22,8 +29,10 @@ Entregas:
 
 Entregas:
 
+- Bruno Cuconato
 - Julio Vieira
 - Graziele Dos Santos Cerqueira
+- Matheus de Oliveira
 
 * Programming Assigments 
 
@@ -34,7 +43,9 @@ programming-assignment-1.org)
 
 Entregas:
 
+- Bruno Cuconato
 - Graziele Dos Santos Cerqueira (E)
 - Julio Vieira
+- Matheus de Oliveira
 
 

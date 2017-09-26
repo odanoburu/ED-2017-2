@@ -2,10 +2,11 @@
 ;; placed in the public domain.
 ;; DPV chapter 3 -- graphs
 
+;;;;;;;;;;;;;;
 ;; test graphs
 (defparameter *directed-graph* (copy-tree '((a c)
 					    (b a d)
-					    (c e f)
+					    (c d e f)
 					    (d c)
 					    (e f)
 					    (f))))
@@ -35,6 +36,7 @@
 					      (f g)
 					      (g f))))
 
+;;;;;;;;;;;;;
 ;; structures
 (defstruct (node
 	     (:print-function ;this will make node printing only print
@@ -47,11 +49,11 @@ property."
   (label)
   (adj-nodes nil)
   (visited nil)
-  (connected-component nil)
   (pre nil)
   (post nil))
 
-;; read functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; read and make functions
 (defun read-node (node-list)
   "get unique nodes in graph. in a graph-list, there is one sub-list
 for each node, and its car is the node, and its cdr are the nodes
@@ -86,6 +88,7 @@ adjacent to it."
     (add-neighbours graph graph-list)
     graph))
 
+;;;;;;;;;;;;;;;;;;;
 ;; init test graphs
 (defvar dg (read-graph *directed-graph*))
 (defvar dag (read-graph *dag-graph*))
@@ -103,6 +106,7 @@ adjacent to it."
       factorial
       (factorial (1- number) (* number factorial))))
 
+;;;;;;
 ;; DFS
 (defun visit-node (node)
   (setf (node-visited node) t))
@@ -116,13 +120,6 @@ adjacent to it."
 			    :post-visit post-visit)))
   (funcall post-visit node))
 
-(defun df-explore-from-label (graph node-label
-			      &key (pre-visit #'visit-node)
-				(post-visit #'identity))
-  (df-explore-from-node (get-node graph node-label)
-			:pre-visit pre-visit
-			:post-visit post-visit))
-
 (defun unvisit-nodes(graph)
   (dolist (node graph)
     (setf (node-visited node) nil)))
@@ -132,10 +129,10 @@ adjacent to it."
 			   (post-visit #'identity))
   (unvisit-nodes graph)
   (dolist (node graph)
-    (unless (node-visited node)
       (funcall explore-fn node :pre-visit pre-visit
-	       :post-visit post-visit))))
+	       :post-visit post-visit)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DFS with explicit stack
 (defun make-stack (&optional stack)
   #'(lambda (cmd &optional element)
@@ -174,6 +171,7 @@ adjacent to it."
 		       (stack-push stack unvisited-adj))
 		(funcall post-visit node))))))
 
+;;;;;;;;;;;;
 ;; adjacency
 (defun is-adjacent-to (node1 node2)
   "can I go from node2 to node1?"
@@ -196,50 +194,7 @@ adjacent to it."
 			   (vertices-reciprocal-p node))
 			 graph)))
 
-;; connected components
-(defun set-connected-component (node component-id)
-  (setf (node-connected-component node) component-id))
-
-(defun set-connected-component-and-visit (node component-id)
-  (set-connected-component node component-id)
-  (visit-node node))
-
-(defun component-is (node ccid)
-  (= (node-connected-component node) ccid))
-
-(defun gather-component (graph ccid &optional (cc nil))
-  "get all nodes which are part of connected component ccid."
-  (if (endp graph)
-      cc
-      (gather-component (rest graph) ccid
-			(cons-if (lambda (node)
-				   (component-is node ccid))
-				 (first graph) cc))))
-
-(defun show-connected-components (graph
-				  max-ccid
-				  &optional (connected-components nil))
-  (if (< max-ccid 0)
-      connected-components
-      (show-connected-components graph (1- max-ccid)
-				 (cons (gather-component
-					graph max-ccid)
-				       connected-components))))
-
-(defun connected-components (graph)
-  "assign ccids to each node in graph."
-  (let ((explore-calls 0))
-    (unvisit-nodes graph) ;i don't seem able to reuse df-explore here
-    (dolist (node graph)
-      (unless (node-visited node)
-	(df-explore-from-node node :pre-visit
-			      (lambda (node)
-				(set-connected-component-and-visit
-				 node explore-calls)))
-	(incf explore-calls)))
-    (show-connected-components graph (1- explore-calls))))
-
-;; dags
+;; counter for ccid's and dag linearization
 (defun make-counter (count &optional end)
   #'(lambda (cmd)
       (ecase cmd
@@ -260,20 +215,68 @@ adjacent to it."
 (defun empty-counter-p (counter)
   (funcall counter :test))
 
+;;;;;;;;;;;;;;;;;;;;;;;
+;; connected components
+(defun set-connected-component (node component-id)
+  (setf (node-visited node) component-id))
+
+(defun set-connected-component-and-visit (node component-id)
+  (set-connected-component node component-id))
+
+(defun component-is (node ccid)
+  (= (node-visited node) ccid))
+
+(defun gather-component (graph ccid &optional (cc nil))
+  "get all nodes which are part of connected component ccid."
+  (if (endp graph)
+      cc
+      (gather-component (rest graph) ccid
+			(cons-if (lambda (node)
+				   (component-is node ccid))
+				 (first graph) cc))))
+
+(defun show-connected-components (graph max-ccid
+				  &optional (connected-components nil))
+  (if (< max-ccid 0)
+      connected-components
+      (show-connected-components graph (1- max-ccid)
+				 (cons (gather-component
+					graph max-ccid)
+				       connected-components))))
+
+(defun connected-components (graph)
+  (let ((counter (make-counter -1))) ; because it increments before
+    (df-explore graph :explore-fn
+                (lambda (node &key pre-visit post-visit)
+                  (unless (node-visited node)
+                    (incf-count counter)
+                    (df-explore-from-node
+                     node :pre-visit pre-visit :post-visit post-visit)))
+                :pre-visit (lambda (node)
+                             (set-connected-component-and-visit
+                              node (get-count counter))))
+    (show-connected-components graph (get-count counter))))
+
+;;;;;;;
+;; dags
 (defun previsit (node counter)
-  (setf (node-pre node) (incf-count counter))
-  (visit-node node))
+  (unless (node-visited node)
+    (setf (node-pre node) (incf-count counter))
+    (visit-node node)))
 
 (defun postvisit (node counter)
-  (setf (node-post node) (incf-count counter)))
+  (unless (node-post node) ;; I have to check if it's the first
+                           ;; post-visit because df-explore now has no
+                           ;; redundant checks of visitedness
+    (setf (node-post node) (incf-count counter))))
 
-(defun reset-node-pre-post (node)
-  (setf (node-pre node) nil)
-  (setf (node-post node) nil))
+(defun reset-node-pre-post (node &key reset-value)
+  (setf (node-pre node) reset-value)
+  (setf (node-post node) reset-value))
 
-(defun reset-nodes-pre-post (graph)
+(defun reset-nodes-pre-post (graph &key (reset-value 0))
   (dolist (node graph)
-    (reset-node-pre-post node)))
+    (reset-node-pre-post node :reset-value reset-value)))
 
 (defun show-pre-post (graph &optional (pre-post-list nil))
   (if (endp graph)
@@ -291,8 +294,8 @@ adjacent to it."
     (reset-nodes-pre-post graph)
     (df-explore graph :explore-fn explore-fn
 		:pre-visit (lambda (node) (previsit node counter))
-		:post-visit (lambda (node) (postvisit node counter)))
-  (show-pre-post graph)))
+		:post-visit (lambda (node) (postvisit node counter))))
+  (show-pre-post graph))
 
 (defun back-edge? (node adj)
   (let ((pre-node (node-pre node))
@@ -313,8 +316,8 @@ adjacent to it."
   (pre-post-visit-nodes graph)
   (not (any-back-edges? graph)))
 
-;; linearization
-
+;;;;;;;;;;;;;;;;;;;;
+;; dag linearization
 (defun linearize-visited-dag (graph)
   (let ((graph-copy (copy-seq graph)))
     (sort graph-copy #'> :key #'node-post)))
@@ -323,35 +326,52 @@ adjacent to it."
   (when (is-dag? graph)
     (linearize-visited-dag graph)))
 
-(defun find-sources (graph &key sources not-sources)
-  (let ((node (first graph)))
-    (if (or (find node not-sources) (endp graph))
-        sources
-        (find-sources (rest graph) :sources (cons node sources)
-                      :not-sources (node-adj-nodes node)))))
+;; using node-pre as the number of incoming edges.
+(defun calculate-incoming-edges (graph)
+  (dolist (node graph)
+    (dolist (adj (node-adj-nodes node))
+      (incf (node-pre adj))))
+  (mapcar #'node-pre graph))
 
-(defun aux-rank-nodes (linear-dag &optional ranked-dag)
-  (if (endp linear-dag)
-      ranked-dag
-      (let* ((sources (find-sources linear-dag))
-             (nr-sources (length sources)))
-        (aux-rank-nodes (subseq linear-dag nr-sources)
-                        (cons sources ranked-dag)))))
+(defun decrement-incoming-edges-from-node (node)
+  (dolist (adj (node-adj-nodes node))
+    (decf (node-pre adj))))
 
-(defun rank-dag (dag)
-  "return reverse transitive reduction of dag, that is,dag's nodes
-ranked by 'sourceness', i.e., list of lists where each sublist is
-composed of nodes of same rank (rank of a node is how many nodes must
-be removed from graph for it to be a source)."
-  (let ((linear-dag (linearize-dag dag)))
-    (aux-rank-nodes linear-dag)))
+(defun decrement-incoming-edges (nodes)
+  (dolist (node nodes)
+    (decrement-incoming-edges-from-node node)))
 
-(defun possible-linearizations (dag)
-  "return number of possible linearizations."
-  (let ((ranked-dag (rank-dag dag)))
-    (reduce #'* (mapcar (lambda (same-rank-nodes)
-                          (factorial (length same-rank-nodes)))
-                        ranked-dag))))
+(defun gather-sources (graph &key sources not-sources)
+  (cond ((endp graph)
+         (values sources not-sources))
+        ((= (node-pre (first graph)) 0)
+         (gather-sources (rest graph)
+                         :sources (cons (first graph) sources)
+                         :not-sources not-sources))
+        ((> (node-pre (first graph)) 0)
+         (gather-sources (rest graph)
+                         :sources sources
+                         :not-sources
+                         (cons (first graph) not-sources)))))
+
+(defun rank-nodes (nodes &optional ranked-nodes)
+  "nodes marked by number incoming edges."
+  (if (endp nodes)
+      ranked-nodes
+      (multiple-value-bind (sources not-sources)
+          (gather-sources nodes)
+        (decrement-incoming-edges sources)
+            (rank-nodes not-sources (cons sources ranked-nodes)))))
+
+(defun combinations (ranked-nodes)
+  (reduce #'* (mapcar #'factorial (mapcar #'length ranked-nodes))))
+
+(defun possible-linearizations-dag (dag)
+  (unless (is-dag? dag)
+    (error "graph not dag."))
+  (reset-nodes-pre-post dag :reset-value 0)
+  (calculate-incoming-edges dag)
+  (combinations (rank-nodes dag)))
 
 ;; tests
 (defun all-visited? (graph)
@@ -375,5 +395,9 @@ be removed from graph for it to be a source)."
 (any-back-edges? ug) ; (#n.B #n.D)
 (is-dag? dag) ; t
 (is-dag? ug) ; nil
-(rank-dag dag) ; ((#n.F #n.E) (#n.C) (#n.D #n.A) (#n.B))
-(possible-linearizations dag) ; 4
+(calculate-incoming-edges ug) ; (4 9 5 6 6 12 13)
+(calculate-incoming-edges dag) ; (1 0 2 1 1 1)
+(rank-nodes dag) ; ((#n.F #n.E) (#n.C) (#n.D #n.A) (#n.B))
+(rank-nodes dag2) ; ((#n.I)(#n.G #n.F)(#n.C #n.D #n.E)(#n.H #n.B #n.A))
+(possible-linearizations-dag dag) ; 4
+(possible-linearizations-dag dag2) ; 72
