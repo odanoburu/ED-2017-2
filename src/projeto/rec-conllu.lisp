@@ -7,9 +7,9 @@
 ;; necessary. sentence lists can be lists of lists of chars for input
 ;; to rec-entities.lisp, or lists of strings for human consumption.
 
-;; use (dir-recognize-entities dir-path entities-path) to recognize
-;; entities in all *.conllu files in a given directory, using the
-;; entity list at entities-path. the output will be as
+;; use (dir-recognize-entities dir-path/*.conllu entities-path) to
+;; recognize entities in all *.conllu files in a given directory,
+;; using the entity list at entities-path. the output will be as
 
 ;; ((file-id (sent-id (ent-id index))))
 
@@ -176,12 +176,12 @@ one file at time, which prevents stack overflow."
   (visualize-entities-and-sentences form-sents (reverse rec-entities) raw-ents)
   (viz-count raw-ents (count-entities
                        (get-entids-from-entrecs rec-entities))))
-
+;;
 (let ((raw-ents (read-entities #p"path to entities list")))
            (with-open-file (stream "~/resultado.txt"
                      :direction :output
                      :if-exists :supersede
                      :if-does-not-exist :create)
     (format stream (write-to-string (viz-count raw-ents (count-entities
-                                         (get-entids-from-entrecs (alexandria:mappend (lambda (entrec) (rest entrec)) (dir-recognize-entities #p"path to conllu files"  #p"path to entities list")))))))))
+                                         (get-entids-from-entrecs-with-fileid (dir-recognize-entities #p"path to conllu files"  #p"path to entities list"))))))))
 |#
