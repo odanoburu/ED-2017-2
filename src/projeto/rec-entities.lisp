@@ -29,7 +29,7 @@
 ;;
 ;; to-do's:
 ;; encontrar submatches tb
-;; transformar em função geradora
+;; transformar em função geradora (mas cl não é lazy...)
 
 
 (ql:quickload :cl-conllu)
@@ -134,6 +134,63 @@ paired."
                                           (acons ents-in-sent
                                                  sent
                                                  viz)))))
+
+;;
+;; get enclosing entities
+(defun aux-add-size-to-entrec (entid-start semi-entities)
+  (destructuring-bind (entid . start) entid-start
+    (cons entid (cons start
+                      (length (get-entity semi-entities entid))))))
+  
+  
+(defun add-size-to-entrec (entrec semi-entities)
+  (destructuring-bind (sentid . entrecs) entrec
+    (cons sentid (mapcar (lambda (entid-start)
+                           (aux-add-size-to-entrec entid-start
+                                                   semi-entities))
+                         entrecs))))
+
+(defun aux-enclosing-entities (entid start end other-ents &optional
+                                                            filtered)
+  (if (endp other-ents)
+      (values (cons entid start) (reverse filtered))
+      (destructuring-bind ((o-entid o-start . o-end) &rest
+                           rest-other-ents)
+          other-ents
+        (if (and (<= start o-start)
+                 (>= (+ start end) (+ o-start o-end)))
+            (aux-enclosing-entities entid start end
+                                    rest-other-ents
+                                    filtered)
+            (aux-enclosing-entities entid start end
+                                    rest-other-ents
+                                    (cons (cons o-entid (cons o-start
+                                                              o-end))
+                                          filtered))))))
+
+(defun enclosing-entities (ents &optional enclosing)
+  (if (endp ents)
+      enclosing
+      (destructuring-bind ((entid start . size) &rest other-ents) ents
+          (multiple-value-bind (enc-ent filtered-ents)
+              (aux-enclosing-entities entid start size other-ents)
+            (enclosing-entities filtered-ents
+                                (cons enc-ent enclosing))))))
+      
+
+(defun get-enclosing-entities (entrecs semi-entities &optional
+                                                  enclosing-ents)
+  (if (endp entrecs)
+      enclosing-ents
+      (let ((entrec-w/size (add-size-to-entrec (first entrecs)
+                                               semi-entities)))
+        (destructuring-bind (sentid . ents) entrec-w/size
+          (get-enclosing-entities (rest entrecs)
+                                  semi-entities
+                                  (cons (cons sentid
+                                              (enclosing-entities
+                                               (reverse ents)))
+                                      enclosing-ents))))))
 
 ;;
 ;; count entities (remove is for better performance)
@@ -254,5 +311,22 @@ paired."
                                         ; ((1 . 2)) (-1 0 393 284)
 (count-entities (list 1 2 3 4 -1 1 8 -1 -1 3))
                ;; ((8 . 1) (4 . 1) (-1 . 3) (2 . 1) (3 . 2) (1 . 2))
+
+(let* ((sents '(("amanda" "silvana" "de" "castro" "amava" "joão" "bosco" ".")
+               ("joão" "bosco" "de" "santos" "gostava" "de" "reggae.")
+               ("aqui" "não" "tem" "entidade.")))
+       (char-sents (mapcar (lambda (sent)
+                             (mapcar #'str-to-char sent))
+                           sents))
+       (raw-ents (list "amanda silvana" "amanda silvana de castro"
+                   "joão bosco" "joão bosco de santos"))
+       (semi-ents (mapcar (lambda (name)
+                            (split-sequence:split-sequence #\space name))
+                          raw-ents))
+       (ents (conllu-process-entities raw-ents))
+       (trie (start-trie ents))
+       (rec-entities (recognize-ents-in-sentences trie char-sents)))
+  (print rec-entities) ;;((2) (1 (2 . 0) (3 . 0)) (0 (2 . 5) (0 . 0) (1 . 0))) 
+  (get-enclosing-entities rec-entities semi-ents)) ;; ((0 (2 . 5) (1 . 0)) (1 (3 . 0)) (2))
 
 |#
