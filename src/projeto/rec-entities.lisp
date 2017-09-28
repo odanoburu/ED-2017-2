@@ -139,8 +139,7 @@ paired."
 ;; get enclosing entities
 (defun aux-add-size-to-entrec (entid-start semi-entities)
   (destructuring-bind (entid . start) entid-start
-    (cons entid (cons start
-                      (length (get-entity semi-entities entid))))))
+    (list* entid start (length (get-entity semi-entities entid)))))
   
   
 (defun add-size-to-entrec (entrec semi-entities)
