@@ -105,9 +105,13 @@
 
 (defun trie-from-entities (path)
   (let* ((raw-ents (read-entities path))
+         (semi-ents (mapcar (lambda (ent)
+                                  (split-sequence:split-sequence
+                                   #\space ent))
+                                raw-ents))
         (ents (conllu-process-entities raw-ents))
         (trie (start-trie ents)))
-    (values trie ents)))
+    (values trie ents semi-ents)))
 
 (defun aux-dir-recognize-entities (trie file-paths &optional entities)
   (if (endp file-paths)
@@ -124,7 +128,7 @@
 (defun dir-recognize-entities (dir-path entities-path)
   "recognize entities in all .conllu files in a directory. (this reads
 one file at time, which prevents stack overflow."
-  (multiple-value-bind (trie *) (trie-from-entities entities-path)
+  (multiple-value-bind (trie * *) (trie-from-entities entities-path)
     (let ((file-paths (directory dir-path)))
       (aux-dir-recognize-entities trie file-paths))))
 
@@ -146,6 +150,104 @@ one file at time, which prevents stack overflow."
   (count-entities
    (get-entids-from-entrecs-with-fileid
     (dir-recognize-entities dir-path entities-path))))
+
+;;
+;; get entity tokens
+(defun get-start-size (entrecs semi-entities)
+  "take (sentid ((entid . start) ..) ..) and return ((start . size) ..)"
+  (mapcar #'rest (rest (add-size-to-entrec entrecs semi-entities))))
+
+(defun aux-get-indices (index-pair sequence)
+  (destructuring-bind (start . size) index-pair
+    (subseq sequence start (+ start size))))
+
+(defun get-indices (indices sequence &optional sliced)
+  "indices = ((start . size) ...)"
+  (if (endp indices)
+      sliced
+      (get-indices (rest indices) sequence
+                          (cons (aux-get-indices (first indices)
+                                                        sequence)
+                                sliced))))
+
+(defun ent-tokens-sent (entrec-indices tk-sent)
+  (list (get-indices entrec-indices tk-sent)
+        (forms-from-sentence tk-sent)))
+
+(defun ent-tokens-sents (sents-entrecs tk-sents semi-ents)
+  (mapcar (lambda (entrec-tksent)
+            (destructuring-bind (entrec-indices . tk-sent) entrec-tksent
+              (ent-tokens-sent entrec-indices tk-sent)))
+          (pairlis (mapcar (lambda (rec) (get-start-size rec semi-ents))
+                           (reverse sents-entrecs))
+                   tk-sents)))
+
+(defun aux-dir-ent-tokens-sent (trie semi-ents file-paths
+                                &optional ent-tks-sents)
+  (if (endp file-paths)
+      ent-tks-sents
+      (let* ((file-path (first file-paths))
+             (file-id (file-namestring file-path))
+             (raw-sents (cl-conllu:read-file file-path))
+             (tk-sents (cons-tokens-from-sentences raw-sents))
+             (char-sents (chars-from-sentences tk-sents))
+             (sent-ents (recognize-ents-in-sentences trie
+                                                         char-sents))
+             (ent-tks-sent (ent-tokens-sents sent-ents tk-sents
+                                             semi-ents)))
+        (aux-dir-ent-tokens-sent trie semi-ents (rest file-paths)
+                                    (acons file-id ent-tks-sent
+                                           ent-tks-sents)))))
+
+(defun dir-ent-tokens-sent (dir-path entities-path)
+  (multiple-value-bind (trie * semi-ents)
+      (trie-from-entities entities-path)
+    (let ((file-paths (directory dir-path)))
+      (aux-dir-ent-tokens-sent trie semi-ents file-paths))))
+
+(defun rm-empty-ent-tokens-sents (ent-tokens-sents)
+  (mapcar (lambda (ent-tokens)
+            (mapcan (lambda (ent)
+                      (unless (null (first ent))))
+                    ent-tokens))
+          ent-tokens-sents))
+
+(defun aux-get-ent-tks-from-dir (ent-sents &optional ent-tks)
+  (if (endp ent-sents)
+      (alexandria:mappend #'identity ent-tks)
+      (let ((ent (caar ent-sents)))
+        (if (null ent)
+            (aux-get-ent-tks-from-dir (rest ent-sents) ent-tks)
+            (aux-get-ent-tks-from-dir (rest ent-sents)
+                                      (cons ent ent-tks))))))
+
+(defun get-ent-tks-from-dir (dir-ent-sents &optional entity-tks)
+  (if (endp dir-ent-sents)
+      entity-tks
+      (get-ent-tks-from-dir (rest dir-ent-sents)
+                            (append (aux-get-ent-tks-from-dir
+                                     (cdar dir-ent-sents))
+                                    entity-tks))))
+
+;;
+;; count out-of-entity relations
+(defun wrong-ent? (ent-tks &optional heads)
+  (if (endp ent-tks)
+      (null heads)
+      (let* ((tk (first ent-tks))
+             (tk-head (cl-conllu:token-head tk))
+             (tk-index (cl-conllu:token-id tk))
+             (new-heads (remove-if (lambda (head)
+                                     (>= tk-index head))
+                                   heads))
+             (head-before? (>= tk-index tk-head)))
+        (wrong-ent? (rest ent-tks) (if head-before?
+                                       new-heads
+                                       (cons tk-head new-heads))))))
+
+(defun count-wrong-ents (ents-tks)
+  (count-if #'wrong-ent? ents-tks))
+  
       
 ;;
 ;; tests
